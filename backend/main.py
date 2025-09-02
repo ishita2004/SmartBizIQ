@@ -21,9 +21,22 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 import pandas as pd
 import numpy as np
 import traceback
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 import io
+from flask import Flask, request, jsonify
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
+import pandas as pd
+from sklearn.cluster import KMeans
+from typing import Optional
+from io import StringIO
+from model.model import detect_anomalies
+from models import Base
+from database import engine
 
-
+Base.metadata.create_all(bind=engine)
 # ✅ Initialize app
 app = FastAPI()
 
@@ -58,113 +71,149 @@ import traceback  # ✅ ADD THIS
 
 
 
+from fastapi import FastAPI, UploadFile, File, Query
+from fastapi.responses import JSONResponse
+import pandas as pd
+import numpy as np
+from prophet import Prophet
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import traceback
+import io
+
+# Deep learning
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, GRU, Dense
+from sklearn.preprocessing import MinMaxScaler
+
+
+
+def create_lstm_or_gru_model(model_type, input_shape):
+    model = Sequential()
+    if model_type == 'lstm':
+        model.add(LSTM(50, activation='relu', input_shape=input_shape))
+    elif model_type == 'gru':
+        model.add(GRU(50, activation='relu', input_shape=input_shape))
+    model.add(Dense(1))
+    model.compile(optimizer='adam', loss='mse')
+    return model
+
 @app.post("/forecasting")
 async def forecast(
     file: UploadFile = File(...),
-    model: str = Query("prophet")  # get model from URL
+    model: str = Query("prophet")
 ):
     try:
         content = await file.read()
         df = pd.read_csv(io.BytesIO(content))
 
-        print("🧾 CSV Columns:", df.columns.tolist())
-        print("📊 Sample Data:\n", df.head())
-
-        # Normalize columns
         if 'Year' in df.columns and 'Value' in df.columns:
             df['ds'] = pd.to_datetime(df['Year'].astype(str), format='%Y')
             df['y'] = df['Value']
         elif 'ds' in df.columns and 'y' in df.columns:
             df['ds'] = pd.to_datetime(df['ds'])
         else:
-            return JSONResponse(status_code=400, content={"error": "CSV must contain either ['Year', 'Value'] or ['ds', 'y'] columns."})
+            return JSONResponse(status_code=400, content={"error": "CSV must contain ['Year', 'Value'] or ['ds', 'y'] columns."})
 
         df = df[['ds', 'y']].dropna()
         if df.empty:
-            return JSONResponse(status_code=400, content={"error": "No valid data after parsing the file."})
+            return JSONResponse(status_code=400, content={"error": "No valid data."})
 
-        # ============================
-        # 🔮 Model-Based Forecasting
-        # ============================
+        result = None
 
         if model == "prophet":
             m = Prophet()
             m.fit(df)
             future = m.make_future_dataframe(periods=5, freq='YE')
             forecast = m.predict(future)
-            result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+            result = forecast[['ds', 'yhat']]
+
         elif model == "arima":
             df_arima = df.copy().set_index("ds")
             arima = ARIMA(df_arima['y'], order=(1, 1, 1)).fit()
-            future_dates = pd.date_range(start=df['ds'].max() + pd.DateOffset(years=1), periods=5, freq='YE')
+            last_date = df_arima.index[-1]
+            if not isinstance(last_date, pd.Timestamp):
+                last_date = pd.to_datetime(last_date)
+            future_dates = pd.date_range(start=last_date + pd.DateOffset(years=1), periods=5, freq='YE')
             forecast_values = arima.forecast(steps=5)
-            result = pd.DataFrame({
-                'ds': future_dates,
-                'yhat': forecast_values,
-                'yhat_lower': forecast_values,
-                'yhat_upper': forecast_values
-            })
-        elif model == "lstm":
-            raise NotImplementedError("LSTM model is not implemented yet.")
-        elif model == "gru":
-            raise NotImplementedError("GRU model is not implemented yet.")
+            result = pd.DataFrame({"ds": future_dates, "yhat": forecast_values})
+
+        elif model in ["lstm", "gru"]:
+            df_nn = df.copy()
+            df_nn.set_index('ds', inplace=True)
+            scaler = MinMaxScaler()
+            scaled = scaler.fit_transform(df_nn[['y']])
+
+            X, y = [], []
+            for i in range(5, len(scaled)):
+                X.append(scaled[i-5:i])
+                y.append(scaled[i])
+            X, y = np.array(X), np.array(y)
+            X = X.reshape((X.shape[0], X.shape[1], 1))
+
+            model_nn = create_lstm_or_gru_model(model, (X.shape[1], X.shape[2]))
+            model_nn.fit(X, y, epochs=50, verbose=0)
+
+            last_sequence = scaled[-5:].reshape((1, 5, 1))
+            preds = []
+            for _ in range(5):
+                pred = model_nn.predict(last_sequence, verbose=0)[0][0]
+                preds.append(pred)
+                last_sequence = np.append(last_sequence[:, 1:, :], [[[pred]]], axis=1)
+
+            future_dates = pd.date_range(start=df['ds'].max() + pd.DateOffset(years=1), periods=5, freq='YE')
+            preds = scaler.inverse_transform(np.array(preds).reshape(-1, 1)).flatten()
+            result = pd.DataFrame({"ds": future_dates, "yhat": preds})
+
         else:
             return JSONResponse(status_code=400, content={"error": f"Unsupported model: {model}"})
 
-        # ======================================
-        # 📊 Business Insights & Evaluation
-        # ======================================
-        result['cumulative_yhat'] = result['yhat'].cumsum()
-        forecast_data = result.tail(5)
-        forecast_data['ds'] = forecast_data['ds'].dt.year
 
-        # Merge for metrics
+        # =======================
+        # 📏 Forecast Evaluation
+        # =======================
         try:
-            merged = pd.merge(df, result[['ds', 'yhat']], on='ds', how='inner')
-            mae = mean_absolute_error(merged['y'], merged['yhat'])
-            mse = mean_squared_error(merged['y'], merged['yhat'])
-            rmse = np.sqrt(mse)
-        except:
+            if model == "prophet":
+                # Prophet gives both past + future — directly compare overlapping dates
+                merged = pd.merge(df, result, on='ds', how='inner')
+            else:
+                # For arima/lstm/gru — use last 5 points from historical data as test
+                test = df.tail(5).copy().reset_index(drop=True)
+                pred = result.copy().reset_index(drop=True)
+
+                if len(test) == 5 and len(pred) == 5:
+                    merged = pd.DataFrame({
+                        'y': test['y'],
+                        'yhat': pred['yhat']
+                    })
+                else:
+                    merged = pd.DataFrame()
+
+            if not merged.empty:
+                mae = mean_absolute_error(merged['y'], merged['yhat'])
+                mse = mean_squared_error(merged['y'], merged['yhat'])
+                rmse = np.sqrt(mse)
+            else:
+                mae = mse = rmse = 0
+        except Exception as e:
+            print("⚠️ Metric calculation failed:", e)
             mae = mse = rmse = 0
 
-        # Best/Worst Year
-        historical = df.copy()
-        historical['year'] = historical['ds'].dt.year
-        best_year = int(historical.loc[historical['y'].idxmax(), 'year'])
-        worst_year = int(historical.loc[historical['y'].idxmin(), 'year'])
-
-        mean_val = historical['y'].mean()
-        std_val = historical['y'].std()
-        historical['z_score'] = (historical['y'] - mean_val) / std_val
-        outliers = historical[np.abs(historical['z_score']) > 2]['year'].astype(int).tolist()
-
-        # Summary
-        growth_pct = ((forecast_data['yhat'].iloc[-1] - forecast_data['yhat'].iloc[0]) / forecast_data['yhat'].iloc[0]) * 100
-        summary = f"Sales are projected to reach ${forecast_data['yhat'].iloc[-1]:.2f} by {forecast_data['ds'].iloc[-1]}, growing {growth_pct:.1f}% over 5 years."
+        summary = f"Projected value in {result['ds'].dt.year.iloc[-1]} is ${result['yhat'].iloc[-1]:.2f}."
 
         return {
-            "forecast": forecast_data.to_dict(orient='records'),
+            "forecast": result.to_dict(orient="records"),
             "metrics": {
                 "MAE": round(mae, 2),
                 "MSE": round(mse, 2),
                 "RMSE": round(rmse, 2)
             },
-            "summary": summary,
-            "bi_insights": {
-                "best_year": best_year,
-                "worst_year": worst_year,
-                "outliers": outliers
-            }
+            "summary": summary
         }
 
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": str(e),
-                "trace": traceback.format_exc()
-            }
-        )
+        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
+
 
 
 
@@ -230,144 +279,125 @@ async def segment_customers(file: UploadFile = File(...), method: str = Query("k
 
 
 
-@app.post("/churn-prediction")
-async def churn_prediction(file: UploadFile = File(...), model: str = Query("random_forest")):
-    try:
-        content = await file.read()
-        df = pd.read_csv(io.BytesIO(content))
-
-        if 'Churn' not in df.columns:
-            return JSONResponse(status_code=400, content={"error": "CSV must contain a 'Churn' column."})
-
-        # ✅ Convert 'Yes'/'No' to 1/0 for classification
-        if df['Churn'].dtype == object:
-            df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
-
-        # ✅ Ensure conversion succeeded
-        if df['Churn'].isnull().any():
-            return JSONResponse(status_code=400, content={"error": "Churn column has invalid values. Use only 'Yes' or 'No'."})
-
-        # Split into features and target
-        X = df.drop(columns=['Churn'])
-        y = df['Churn']
-
-        # ✅ One-hot encode categorical variables
-        X = pd.get_dummies(X)
-
-        # Split train-test
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        # Choose model
-        if model == "xgboost":
-            from xgboost import XGBClassifier
-            clf = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
-        else:
-            from sklearn.ensemble import RandomForestClassifier
-            clf = RandomForestClassifier()
-
-        # Train and predict
-        clf.fit(X_train, y_train)
-        y_pred = clf.predict(X_test)
-
-        from sklearn.metrics import classification_report, confusion_matrix
-        report = classification_report(y_test, y_pred, output_dict=True)
-        matrix = confusion_matrix(y_test, y_pred).tolist()
-
-        return JSONResponse(content={
-            "classification_report": report,
-            "confusion_matrix": matrix
-        })
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-@app.post("/anomaly-detection")
-async def detect_anomalies(file: UploadFile = File(...), method: str = Query("isolation_forest")):
+@app.post("/predict-churn")
+async def predict_churn(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
 
-        # Ensure numeric features
-        numeric_df = df.select_dtypes(include=[np.number])
-        if numeric_df.empty:
-            return JSONResponse(status_code=400, content={"error": "CSV must contain numeric features."})
+        # ✅ Rename CustomerID to Customer if needed
+        if 'CustomerID' in df.columns:
+            df.rename(columns={"CustomerID": "Customer"}, inplace=True)
 
-        # Use only numeric data
-        X = numeric_df.values
+        required_cols = {'Customer', 'Gender', 'Age', 'Tenure', 'MonthlyCharges', 'TotalCharges'}
+        if not required_cols.issubset(df.columns):
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"CSV must contain: {', '.join(required_cols)}"}
+            )
 
-        # Choose algorithm
-        if method == "svm":
-            model = OneClassSVM(gamma='auto')
-        elif method == "zscore":
-            z_scores = np.abs((X - X.mean(axis=0)) / X.std(axis=0))
-            anomalies = (z_scores > 3).any(axis=1)
-        else:  # Default: Isolation Forest
-            model = IsolationForest(contamination=0.1, random_state=42)
-            anomalies = model.fit_predict(X) == -1
+        # Clean missing values
+        df.dropna(subset=['Gender', 'Age', 'Tenure', 'MonthlyCharges', 'TotalCharges'], inplace=True)
 
-        df['Anomaly'] = anomalies.astype(int)
+        # Encode categorical
+        df['Gender'] = LabelEncoder().fit_transform(df['Gender'])
 
-        # 📊 Plot
-        plt.figure(figsize=(8, 6))
-        plt.scatter(df.index, numeric_df.iloc[:, 0], c=df['Anomaly'], cmap='coolwarm', s=50)
-        plt.title("Anomaly Detection")
-        plt.xlabel("Index")
-        plt.ylabel(numeric_df.columns[0])
-        plt.tight_layout()
+        # Dummy churn labels for training
+        df['Churn'] = [1 if i % 2 == 0 else 0 for i in range(len(df))]  # Dummy alternating labels for training
 
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        plt.close()
+        X = df[['Gender', 'Age', 'Tenure', 'MonthlyCharges', 'TotalCharges']]
+        y = df['Churn']
 
-        return JSONResponse(content={
-            "data": df.to_dict(orient='records'),
-            "plot": img_base64
-        })
+        # Train model
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X_train, y_train)
+
+        # Predict probability
+        probabilities = model.predict_proba(X)[:, 1]  # Probability of class 1 (Churn)
+        predictions = model.predict(X)
+
+        df['ChurnProbability'] = (probabilities * 100).round(2)
+        df['ChurnLabel'] = df['ChurnProbability'].apply(lambda p: "🔴 Likely to Churn" if p > 50 else "🟢 Retained")
+
+        output = df[['Customer', 'Gender', 'Age', 'Tenure', 'MonthlyCharges', 'TotalCharges', 'ChurnProbability', 'ChurnLabel']].to_dict(orient="records")
+
+        return {"data": output}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
+@app.post("/anomaly-detection")
+async def detect_anomaly(file: UploadFile = File(...), method: str = Query("isolation_forest")):
+    try:
+        df = pd.read_csv(file.file)
+        result_df, image_base64 = detect_anomalies(df, method=method)
+        return {
+            "data": result_df.to_dict(orient="records"),
+            "plot": image_base64
+        }
+    except Exception as e:
+        return {"error": str(e)}
+# Global variables to hold dataset and model
+data = None
+kmeans_model = None
 
-@app.post("/recommendation")
-async def recommend_products(file: UploadFile = File(...), customer_id: int = Query(...)):
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    global data, kmeans_model
+
     try:
         content = await file.read()
-        df = pd.read_csv(io.BytesIO(content))
+        decoded = content.decode("utf-8")
+        df = pd.read_csv(StringIO(decoded))
 
-        if not {'CustomerID', 'Product', 'Category', 'Rating'}.issubset(df.columns):
-            return JSONResponse(status_code=400, content={"error": "CSV must contain CustomerID, Product, Category, Rating columns."})
+        if 'CustomerID' not in df.columns:
+            raise HTTPException(status_code=400, detail="CSV must contain 'CustomerID' column.")
 
-        # Create a product profile by combining category and product name
-        df['product_profile'] = df['Product'] + " " + df['Category']
+        df.set_index('CustomerID', inplace=True)
 
-        # Pivot table for user-item matrix
-        user_product_matrix = df.pivot_table(index='CustomerID', columns='product_profile', values='Rating', fill_value=0)
+        # Apply KMeans clustering
+        kmeans_model = KMeans(n_clusters=5, random_state=42)
+        df["Cluster"] = kmeans_model.fit_predict(df)
 
-        # Compute similarity matrix
-        similarity = cosine_similarity(user_product_matrix)
-
-        # Get similar customers
-        customer_idx = user_product_matrix.index.get_loc(customer_id)
-        sim_scores = list(enumerate(similarity[customer_idx]))
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:]  # exclude self
-
-        # Recommend products liked by similar users
-        similar_customers = [user_product_matrix.index[i] for i, _ in sim_scores[:2]]
-        recommended_products = df[df['CustomerID'].isin(similar_customers)]
-
-        # Filter out already rated products
-        rated_products = df[df['CustomerID'] == customer_id]['Product'].tolist()
-        recommended_products = recommended_products[~recommended_products['Product'].isin(rated_products)]
-
-        return JSONResponse(content={
-            "customer_id": customer_id,
-            "recommendations": recommended_products[['Product', 'Category']].drop_duplicates().to_dict(orient='records')
-        })
+        data = df
+        return {"message": "Upload and processing successful."}
 
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+
+@app.post("/recommend")
+async def recommend(customer_id: str = Form(...)):
+    global data, kmeans_model
+
+    if data is None or kmeans_model is None:
+        raise HTTPException(status_code=400, detail="Data not uploaded. Please upload the CSV first.")
+
+    try:
+        customer_id = int(customer_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid customer ID format. Must be numeric.")
+
+    if customer_id not in data.index:
+        raise HTTPException(status_code=404, detail="Customer ID not found.")
+
+    # Identify customer cluster
+    customer_cluster = data.loc[customer_id, "Cluster"]
+
+    # Get cluster members
+    cluster_members = data[data["Cluster"] == customer_cluster].drop(columns=["Cluster"])
+    average_scores = cluster_members.mean().sort_values(ascending=False)
+
+    # Get products not already bought by this customer
+    customer_purchases = data.loc[customer_id].drop("Cluster")
+    already_bought = customer_purchases[customer_purchases > 0].index
+
+    # Recommend top 10 not-bought products
+    recommendations = [prod for prod in average_scores.index if prod not in already_bought][:10]
+
+    return JSONResponse(content={
+        "cluster": int(customer_cluster),
+        "recommendations": recommendations
+    })
+if __name__ == '__main__':
+    app.run(debug=True)

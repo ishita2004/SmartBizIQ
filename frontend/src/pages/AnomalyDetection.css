@@ -1,0 +1,12 @@
+.table-danger {
+  background-color: #f8d7da !important;
+}
+
+.card {
+  border-radius: 1rem;
+  border: none;
+}
+
+h2, h4 {
+  font-weight: bold;
+}

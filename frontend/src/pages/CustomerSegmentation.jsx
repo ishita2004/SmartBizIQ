@@ -1,27 +1,43 @@
-import React, { useState } from 'react';
-import axios from 'axios';
-import 'bootstrap/dist/css/bootstrap.min.css';
+import React, { useState } from "react";
+import axios from "axios";
+import {
+  Container,
+  Card,
+  Form,
+  Button,
+  Row,
+  Col,
+  Alert,
+  Table,
+  Spinner,
+  OverlayTrigger,
+  Tooltip as BootstrapTooltip,
+  ListGroup
+} from "react-bootstrap";
 
 const CustomerSegmentation = () => {
   const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState("");
   const [method, setMethod] = useState("kmeans");
   const [results, setResults] = useState([]);
   const [plot, setPlot] = useState(null);
   const [summaries, setSummaries] = useState({});
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
+    const selected = e.target.files[0];
+    setFile(selected);
+    setFileName(selected?.name || "");
     setError("");
-  };
-
-  const handleMethodChange = (e) => {
-    setMethod(e.target.value);
+    setResults([]);
+    setSummaries({});
+    setPlot(null);
   };
 
   const handleUpload = async () => {
     if (!file) {
-      setError("Please upload a CSV file first.");
+      alert("📂 Please select a CSV file before uploading.");
       return;
     }
 
@@ -29,94 +45,114 @@ const CustomerSegmentation = () => {
     formData.append("file", file);
 
     try {
-      const response = await axios.post(
+      setLoading(true);
+      const res = await axios.post(
         `http://localhost:8000/segmentation/segment-customers?method=${method}`,
         formData,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        }
+        { headers: { "Content-Type": "multipart/form-data" } }
       );
-      setResults(response.data.data);
-      setPlot(response.data.plot);
-      setSummaries(response.data.summaries || {});
+
+      setResults(res.data.data);
+      setPlot(res.data.plot);
+      setSummaries(res.data.summaries || {});
+      setError("");
     } catch (err) {
-      setError(err.response?.data?.error || "Upload failed.");
+      console.error("Upload failed:", err);
+      setError(err.response?.data?.error || "❌ Something went wrong.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="container mt-4">
-      <h2 className="mb-4">📊 Customer Segmentation</h2>
+    <Container className="my-5">
+      <Card className="shadow-lg border-0 p-4">
+        <h2 className="mb-4" style={{ color: "#000" }}>👥 Customer Segmentation Dashboard</h2>
+        <p className="text-muted">Upload your customer data (CSV) and segment them using clustering models like KMeans or DBSCAN. Required columns: <code>Age, Annual_Income, Spending_Score</code>.</p>
 
-      <div className="row mb-3">
-        <div className="col-md-6">
-          <input type="file" className="form-control" accept=".csv" onChange={handleFileChange} />
-        </div>
+        <Form className="mb-4">
+          <Form.Group className="mb-3">
+            <Form.Label className="text-dark">
+              🧠 Choose Clustering Method{" "}
+              <OverlayTrigger placement="right" overlay={<BootstrapTooltip>Choose between KMeans (popular for structured clusters) and DBSCAN (for density-based groups and outlier detection)</BootstrapTooltip>}>
+                <span style={{ cursor: "help", color: "#0d6efd" }}>ⓘ</span>
+              </OverlayTrigger>
+            </Form.Label>
+            <Form.Select value={method} onChange={(e) => setMethod(e.target.value)}>
+              <option value="kmeans">KMeans</option>
+              <option value="dbscan">DBSCAN</option>
+            </Form.Select>
+          </Form.Group>
 
-        <div className="col-md-4">
-          <select className="form-select" value={method} onChange={handleMethodChange}>
-            <option value="kmeans">KMeans</option>
-            <option value="dbscan">DBSCAN</option>
-          </select>
-        </div>
+          <Form.Group className="mb-3">
+            <Form.Label className="text-dark">📂 Upload Customer CSV File</Form.Label>
+            <Form.Control type="file" accept=".csv" onChange={handleFileChange} />
+            {fileName && <small className="text-muted">Selected File: {fileName}</small>}
+          </Form.Group>
 
-        <div className="col-md-2">
-          <button className="btn btn-primary w-100" onClick={handleUpload}>Segment</button>
-        </div>
-      </div>
+          <Button variant="dark" onClick={handleUpload} disabled={loading}>
+            {loading ? <Spinner animation="border" size="sm" /> : "Upload & Segment"}
+          </Button>
+        </Form>
 
-      {error && <div className="alert alert-danger">{error}</div>}
+        {error && <Alert variant="danger">{error}</Alert>}
+        {!results.length && !loading && <Alert variant="info">ℹ️ Upload a CSV and choose a clustering method to start segmentation.</Alert>}
 
-      {results.length > 0 && (
-        <div className="mt-4">
-          <h5>📋 Segmentation Results</h5>
-          <div className="table-responsive">
-            <table className="table table-bordered table-hover">
-              <thead className="table-light">
-                <tr>
-                  <th>Age</th>
-                  <th>Annual Income</th>
-                  <th>Spending Score</th>
-                  <th>Cluster</th>
-                  <th>Label</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((row, idx) => (
-                  <tr key={idx}>
-                    <td>{row.Age}</td>
-                    <td>{row.Annual_Income}</td>
-                    <td>{row.Spending_Score}</td>
-                    <td>{row.Cluster}</td>
-                    <td>{row.Label}</td>
+        {results.length > 0 && (
+          <>
+            <h4 className="text-dark mb-3">📋 Segmentation Results</h4>
+            <div className="table-responsive">
+              <Table striped bordered hover responsive className="text-dark">
+                <thead className="table-dark">
+                  <tr>
+                    <th>Age</th>
+                    <th>Annual Income</th>
+                    <th>Spending Score</th>
+                    <th>Cluster</th>
+                    <th>Label</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {results.map((row, idx) => (
+                    <tr key={idx}>
+                      <td>{row.Age}</td>
+                      <td>₹{row.Annual_Income.toLocaleString()}</td>
+                      <td>{row.Spending_Score}</td>
+                      <td>{row.Cluster}</td>
+                      <td>{row.Label}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
 
-      {Object.keys(summaries).length > 0 && (
-        <div className="mt-4">
-          <h5>🧠 Segment Summaries</h5>
-          <ul className="list-group">
-            {Object.entries(summaries).map(([label, summary], idx) => (
-              <li key={idx} className="list-group-item">
-                <strong>{label}:</strong> {summary}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+            <Card className="mt-4 p-3 bg-light">
+              <h5 className="text-dark">📊 Cluster Visualization</h5>
+              {plot && (
+                <img
+                  src={`data:image/png;base64,${plot}`}
+                  alt="Segmentation Plot"
+                  className="img-fluid border mt-3"
+                />
+              )}
+            </Card>
 
-      {plot && (
-        <div className="mt-4">
-          <h5>📈 Cluster Visualization</h5>
-          <img src={`data:image/png;base64,${plot}`} alt="Segmentation Plot" className="img-fluid border" />
-        </div>
-      )}
-    </div>
+            {Object.keys(summaries).length > 0 && (
+              <Card className="mt-4 p-3 bg-light border-info">
+                <h5 className="text-dark">🧠 Segment Summaries</h5>
+                <ListGroup variant="flush">
+                  {Object.entries(summaries).map(([label, summary], idx) => (
+                    <ListGroup.Item key={idx}>
+                      <strong>{label}:</strong> {summary}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              </Card>
+            )}
+          </>
+        )}
+      </Card>
+    </Container>
   );
 };
 
