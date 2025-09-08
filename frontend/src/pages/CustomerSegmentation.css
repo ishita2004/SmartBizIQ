@@ -1,0 +1,183 @@
+/* === Upload Box Styling === */
+.upload-box {
+  border: 2px dashed #aaa;
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  background: rgba(88, 99, 76, 0.15);
+  color: #fff;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.upload-box.active {
+  border-color: #0d6efd;
+  background: rgba(13, 110, 253, 0.1);
+}
+
+.upload-box h5,
+.upload-box p,
+.upload-box small {
+  color: #ddd !important;
+  margin: 5px 0;
+}
+
+.upload-box .upload-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+  color: #0d6efd;
+}
+
+/* === Forecast & Segmentation Cards === */
+.forecast-card,
+.forecast-data-card {
+  background: rgba(30, 30, 30, 0.95) !important;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  border: none;
+  padding: 20px;
+  transition: 0.3s;
+}
+
+.forecast-card:hover,
+.forecast-data-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+}
+
+/* === Titles & Subtitles === */
+.forecast-title {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.forecast-subtitle {
+  font-size: 1rem;
+  color: #bbb;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* === Buttons === */
+button,
+.btn {
+  border-radius: 6px;
+  font-size: 0.95rem;
+  padding: 8px 16px;
+  transition: 0.3s;
+}
+
+button:hover,
+.btn:hover {
+  transform: scale(1.03);
+}
+
+/* === List Group Summaries === */
+.list-group-item {
+  background: transparent;
+  color: #eee;
+  border: none;
+  font-size: 0.95rem;
+  padding: 6px 0;
+}
+
+/* === Accordion for Mobile Table === */
+.accordion-item {
+  background: rgba(40, 40, 40, 0.95);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: none;
+}
+
+.accordion-button {
+  background: rgba(50, 50, 50, 0.95);
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.accordion-button:not(.collapsed) {
+  background: #0d6efd;
+  color: #fff;
+}
+
+/* === Chart Styling (Plotly Background) === */
+.js-plotly-plot .plotly {
+  background: transparent !important;
+}
+
+.plotly .main-svg {
+  background: transparent !important;
+}
+
+/* === Container Layout === */
+.forecast-container {
+  margin: 20px auto;
+  max-width: 1200px;
+  padding: 0 15px;
+}
+
+/* === Responsive Design === */
+@media (max-width: 992px) {
+  .forecast-card {
+    padding: 15px;
+  }
+
+  .forecast-title {
+    font-size: 1.5rem;
+  }
+
+  .forecast-subtitle {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .forecast-title {
+    font-size: 1.3rem;
+  }
+
+  .forecast-subtitle {
+    font-size: 0.85rem;
+  }
+
+  .upload-box {
+    padding: 15px;
+  }
+
+  .upload-box .upload-icon {
+    font-size: 26px;
+  }
+
+  .list-group-item {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .forecast-title {
+    font-size: 1.2rem;
+  }
+
+  .forecast-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .forecast-data-card h5 {
+    font-size: 1rem;
+  }
+
+  .forecast-data-card p,
+  .forecast-data-card li {
+    font-size: 0.85rem;
+  }
+
+  button,
+  .btn {
+    font-size: 0.85rem;
+    padding: 6px 12px;
+  }
+}

@@ -1,0 +1,137 @@
+/* Container and Card */
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
+
+.upload-box {
+  border: 2px dashed #888;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  background-color: #3a3a2f;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  word-break: break-word;
+}
+
+.upload-box.active {
+  border-color: #007bff;
+  background-color: #4a4a3a;
+}
+
+.upload-box .upload-icon {
+  font-size: 30px;
+  margin-bottom: 10px;
+  color: #007bff;
+}
+
+.upload-box h5,
+.upload-box p {
+  color: #fff !important;
+  margin: 5px 0;
+}
+
+/* Form Inputs */
+.inputText {
+  width: 100%;
+  padding: 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #555;
+  background-color: #2e2e23;
+  color: #fff;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+/* Button */
+button {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  width: 100%;
+  padding: 0.8rem 1.5rem;
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Results */
+.results {
+  margin-top: 2rem;
+  background-color: rgba(70,70,60,0.5);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.resultsHeader {
+  color: #fff;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.list {
+  padding-left: 1.2rem;
+}
+
+.listItem {
+  margin-bottom: 0.6rem;
+  font-size: 1.1rem;
+  color: #fff;
+  transition: all 0.2s ease;
+}
+
+.noResults {
+  margin-top: 1rem;
+  color: #ccc;
+  font-style: italic;
+  text-align: center;
+}
+
+.error {
+  color: #ff6b6b;
+  margin-top: 1rem;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* Form Group */
+.formGroup {
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+  color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .card {
+    padding: 1.5rem !important;
+  }
+
+  .upload-box {
+    padding: 1rem !important;
+  }
+
+  .inputText {
+    font-size: 0.95rem !important;
+    padding: 0.6rem !important;
+  }
+
+  button {
+    font-size: 1rem !important;
+    padding: 0.7rem 1rem !important;
+  }
+}

@@ -1,0 +1,16 @@
+pip
+fastapi
+uvicorn
+python-multipart
+pandas
+numpy
+scikit-learn
+prophet
+statsmodels
+matplotlib
+seaborn
+tensorflow
+plotly
+SQLAlchemy
+setuptools
+wheel

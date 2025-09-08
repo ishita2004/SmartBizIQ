@@ -1,0 +1,99 @@
+/* Upload Box */
+.upload-box {
+  border: 2px dashed #ccc;
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  background: rgba(88, 99, 76, 0.902);
+  color: #000;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.upload-box.active {
+  border-color: #007bff;
+  background: #f8f9fa;
+}
+
+.upload-box h5,
+.upload-box p,
+.upload-box small {
+  color: #000 !important;
+  margin: 5px 0;
+}
+
+.upload-box .upload-icon {
+  font-size: 30px;
+  margin-bottom: 10px;
+  color: #007bff;
+}
+
+/* Card */
+.forecast-card,
+.forecast-data-card,
+.forecast-compare-card {
+  background: rgba(46, 46, 35, 0.902) !important;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: none;
+}
+
+/* Headings and text */
+h2, h4, h5, p {
+  color: #fff !important;
+}
+
+/* === Override Global White Table Text === */
+/* Comparison table inside forecast-compare-card */
+.forecast-compare-card table,
+.forecast-compare-card th,
+.forecast-compare-card td,
+.forecast-compare-card thead,
+.forecast-compare-card tbody {
+  color: #000 !important;        /* Black text */
+  background-color: #fff !important; /* White background */
+  border: 1px solid #555;
+}
+
+/* Optional: alternate row shading */
+.forecast-compare-card tr:nth-child(even) td {
+  background-color: #f2f2f2 !important;
+}
+
+/* Table headers */
+.forecast-compare-card thead th {
+  background-color: #ddd !important;
+  color: #000 !important;
+  font-weight: bold;
+}
+
+/* Responsive Table: Mobile View */
+@media (max-width: 768px) {
+  .forecast-compare-card table,
+  .forecast-compare-card thead,
+  .forecast-compare-card tbody,
+  .forecast-compare-card th,
+  .forecast-compare-card td,
+  .forecast-compare-card tr {
+    display: block;
+    width: 100%;
+  }
+
+  .forecast-compare-card th {
+    text-align: left;
+  }
+
+  .forecast-compare-card td {
+    padding-left: 50%;
+    position: relative;
+    text-align: left;
+  }
+
+  .forecast-compare-card td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 15px;
+    font-weight: bold;
+  }
+}

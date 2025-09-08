@@ -9,7 +9,7 @@ import CustomerSegmentation from './pages/CustomerSegmentation';
 import ChurnPrediction from './pages/ChurnPrediction';
 import AnomalyDetection from './pages/AnomalyDetection';
 import RecommendationSystem from './pages/RecommendationSystem';
-import TableauDashboard from './pages/TableauDashboard';
+import AIChatbot from './pages/AIChatBot';
 
 function App() {
   return (
@@ -23,7 +23,7 @@ function App() {
           <Route path="churn-prediction" element={<ChurnPrediction />} />
           <Route path="anomaly-detection" element={<AnomalyDetection />} />
           <Route path="recommendation-system" element={<RecommendationSystem />} />
-          <Route path="dashboard" element={<TableauDashboard />} />
+          <Route path="dashboard" element={<AIChatbot />} />
         </Route>
 
         {/* Redirect any unknown path to / */}

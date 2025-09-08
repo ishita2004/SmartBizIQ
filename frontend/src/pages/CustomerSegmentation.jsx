@@ -1,43 +1,53 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import axios from "axios";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+import Plot from "react-plotly.js";
+import { useDropzone } from "react-dropzone";
 import {
   Container,
   Card,
   Form,
   Button,
-  Row,
-  Col,
-  Alert,
-  Table,
   Spinner,
+  Alert,
   OverlayTrigger,
   Tooltip as BootstrapTooltip,
-  ListGroup
+  ListGroup,
+  Row,
+  Col,
+  Accordion
 } from "react-bootstrap";
+import "./CustomerSegmentation.css";
 
 const CustomerSegmentation = () => {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const [method, setMethod] = useState("kmeans");
   const [results, setResults] = useState([]);
-  const [plot, setPlot] = useState(null);
+  const [plotData, setPlotData] = useState(null);
   const [summaries, setSummaries] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleFileChange = (e) => {
-    const selected = e.target.files[0];
+  const onDrop = useCallback((acceptedFiles) => {
+    const selected = acceptedFiles[0];
     setFile(selected);
     setFileName(selected?.name || "");
     setError("");
     setResults([]);
+    setPlotData(null);
     setSummaries({});
-    setPlot(null);
-  };
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: ".csv",
+  });
 
   const handleUpload = async () => {
     if (!file) {
-      alert("📂 Please select a CSV file before uploading.");
+      alert("📂 Please upload a CSV file before segmentation.");
       return;
     }
 
@@ -53,28 +63,119 @@ const CustomerSegmentation = () => {
       );
 
       setResults(res.data.data);
-      setPlot(res.data.plot);
       setSummaries(res.data.summaries || {});
       setError("");
+
+      // Prepare data for Plotly scatter plot
+      const plotPoints = res.data.data.map((d) => ({
+        x: d.Annual_Income,
+        y: d.Spending_Score,
+        cluster: d.Cluster,
+      }));
+
+      const clusters = [...new Set(plotPoints.map((p) => p.cluster))];
+      const traces = clusters.map((c) => {
+        const clusterPoints = plotPoints.filter((p) => p.cluster === c);
+        return {
+          x: clusterPoints.map((p) => p.x),
+          y: clusterPoints.map((p) => p.y),
+          mode: "markers",
+          type: "scatter",
+          name: `Cluster ${c}`,
+          marker: { size: 10 },
+        };
+      });
+
+      setPlotData(traces);
     } catch (err) {
-      console.error("Upload failed:", err);
+      console.error(err);
       setError(err.response?.data?.error || "❌ Something went wrong.");
     } finally {
       setLoading(false);
     }
   };
 
+  const generateFullAnalysis = () => {
+    if (!results.length) return "No data to analyze.";
+
+    const clusterGroups = {};
+    results.forEach((r) => {
+      if (!clusterGroups[r.Cluster]) clusterGroups[r.Cluster] = [];
+      clusterGroups[r.Cluster].push(r);
+    });
+
+    let report = "📊 Customer Segmentation Analysis\n\n";
+    Object.entries(clusterGroups).forEach(([cluster, data]) => {
+      const avgIncome = Math.round(
+        data.reduce((sum, d) => sum + d.Annual_Income, 0) / data.length
+      );
+      const avgScore = Math.round(
+        data.reduce((sum, d) => sum + d.Spending_Score, 0) / data.length
+      );
+      report += `Cluster ${cluster}:\n`;
+      report += `- Total Customers: ${data.length}\n`;
+      report += `- Average Income: ₹${avgIncome}\n`;
+      report += `- Average Spending Score: ${avgScore}\n\n`;
+    });
+    report += "💡 Insights:\n";
+    report += "- Target high-spending clusters for premium campaigns.\n";
+    report += "- Engage low-spending clusters to improve loyalty.\n";
+    return report;
+  };
+
+  const handleDownloadFullReport = async () => {
+    if (!results.length) return;
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+
+    pdf.setFontSize(16);
+    pdf.text("👥 Customer Segmentation Full Report", 14, 20);
+    pdf.setFontSize(12);
+    pdf.text(`Method: ${method.toUpperCase()}`, 14, 30);
+    pdf.text(`Total Customers: ${results.length}`, 14, 38);
+
+    const fullAnalysis = generateFullAnalysis();
+    const lines = pdf.splitTextToSize(fullAnalysis, pageWidth - 28);
+    pdf.text(lines, 14, 50);
+
+    pdf.autoTable({
+      startY: 120,
+      head: [["Age", "Income", "Score", "Cluster", "Label"]],
+      body: results.slice(0, 10).map((r) => [
+        r.Age,
+        `₹${r.Annual_Income.toLocaleString()}`,
+        r.Spending_Score,
+        r.Cluster,
+        r.Label,
+      ]),
+      margin: { left: 14, right: 14 },
+      theme: "grid",
+      styles: { fontSize: 9 },
+    });
+
+    pdf.save(`Customer_Segmentation_Report.pdf`);
+  };
+
   return (
-    <Container className="my-5">
-      <Card className="shadow-lg border-0 p-4">
-        <h2 className="mb-4" style={{ color: "#000" }}>👥 Customer Segmentation Dashboard</h2>
-        <p className="text-muted">Upload your customer data (CSV) and segment them using clustering models like KMeans or DBSCAN. Required columns: <code>Age, Annual_Income, Spending_Score</code>.</p>
+    <Container className="forecast-container">
+      <Card className="forecast-card">
+        <h2 className="forecast-title">👥 Customer Segmentation Dashboard</h2>
+        <p className="forecast-subtitle">
+          Upload your customer CSV data and segment them using KMeans or DBSCAN.
+        </p>
 
         <Form className="mb-4">
           <Form.Group className="mb-3">
-            <Form.Label className="text-dark">
+            <Form.Label>
               🧠 Choose Clustering Method{" "}
-              <OverlayTrigger placement="right" overlay={<BootstrapTooltip>Choose between KMeans (popular for structured clusters) and DBSCAN (for density-based groups and outlier detection)</BootstrapTooltip>}>
+              <OverlayTrigger
+                placement="right"
+                overlay={
+                  <BootstrapTooltip>
+                    KMeans: structured clusters. DBSCAN: density-based & detects outliers.
+                  </BootstrapTooltip>
+                }
+              >
                 <span style={{ cursor: "help", color: "#0d6efd" }}>ⓘ</span>
               </OverlayTrigger>
             </Form.Label>
@@ -84,71 +185,93 @@ const CustomerSegmentation = () => {
             </Form.Select>
           </Form.Group>
 
-          <Form.Group className="mb-3">
-            <Form.Label className="text-dark">📂 Upload Customer CSV File</Form.Label>
-            <Form.Control type="file" accept=".csv" onChange={handleFileChange} />
+          <div {...getRootProps()} className={`upload-box ${isDragActive ? "active" : ""}`}>
+            <input {...getInputProps()} />
+            <div className="upload-icon">⬆️</div>
+            <h5>Upload CSV File</h5>
+            <p>Drag & drop or click to browse</p>
             {fileName && <small className="text-muted">Selected File: {fileName}</small>}
-          </Form.Group>
 
-          <Button variant="dark" onClick={handleUpload} disabled={loading}>
+            {/* ✅ Supported Columns Info */}
+            <small className="text-muted d-block mt-2">
+              <OverlayTrigger
+                placement="right"
+                overlay={<BootstrapTooltip>CSV must include these columns</BootstrapTooltip>}
+              >
+                <span style={{ cursor: "help", color: "#0d6efd" }}>ⓘ</span>
+              </OverlayTrigger>{" "}
+              Supported Columns: <strong>Age, Annual_Income, Spending_Score</strong>
+            </small>
+          </div>
+
+          <Button variant="dark" className="mt-3" onClick={handleUpload} disabled={loading}>
             {loading ? <Spinner animation="border" size="sm" /> : "Upload & Segment"}
           </Button>
         </Form>
 
         {error && <Alert variant="danger">{error}</Alert>}
-        {!results.length && !loading && <Alert variant="info">ℹ️ Upload a CSV and choose a clustering method to start segmentation.</Alert>}
+        {!results.length && !loading && (
+          <Alert variant="info">ℹ️ Upload a CSV and choose a clustering method to start segmentation.</Alert>
+        )}
 
         {results.length > 0 && (
           <>
-            <h4 className="text-dark mb-3">📋 Segmentation Results</h4>
-            <div className="table-responsive">
-              <Table striped bordered hover responsive className="text-dark">
-                <thead className="table-dark">
-                  <tr>
-                    <th>Age</th>
-                    <th>Annual Income</th>
-                    <th>Spending Score</th>
-                    <th>Cluster</th>
-                    <th>Label</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((row, idx) => (
-                    <tr key={idx}>
-                      <td>{row.Age}</td>
-                      <td>₹{row.Annual_Income.toLocaleString()}</td>
-                      <td>{row.Spending_Score}</td>
-                      <td>{row.Cluster}</td>
-                      <td>{row.Label}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
+            <Row className="mt-4">
+              <Col md={6}>
+                <Card className="p-3 forecast-data-card">
+                  <h5>Segment Summaries</h5>
+                  <ListGroup variant="flush">
+                    {Object.entries(summaries).map(([label, summary], idx) => (
+                      <ListGroup.Item key={idx}>
+                        <strong>{label}:</strong> {summary}
+                      </ListGroup.Item>
+                    ))}
+                  </ListGroup>
+                </Card>
+              </Col>
 
-            <Card className="mt-4 p-3 bg-light">
-              <h5 className="text-dark">📊 Cluster Visualization</h5>
-              {plot && (
-                <img
-                  src={`data:image/png;base64,${plot}`}
-                  alt="Segmentation Plot"
-                  className="img-fluid border mt-3"
-                />
-              )}
-            </Card>
+              <Col md={6}>
+                <Card className="p-3 forecast-data-card">
+                  <h5>Interactive Cluster Visualization</h5>
+                  {plotData && (
+                    <Plot
+                      data={plotData}
+                      layout={{
+                        title: "Customer Segmentation",
+                        xaxis: { title: "Annual Income" },
+                        yaxis: { title: "Spending Score" },
+                        plot_bgcolor: "black",
+                        paper_bgcolor: "black",
+                        font: { color: "white" },
+                        legend: { font: { color: "white" } },
+                      }}
+                      style={{ width: "100%", height: "350px" }}
+                      config={{ responsive: true }}
+                    />
+                  )}
+                </Card>
+              </Col>
+            </Row>
 
-            {Object.keys(summaries).length > 0 && (
-              <Card className="mt-4 p-3 bg-light border-info">
-                <h5 className="text-dark">🧠 Segment Summaries</h5>
-                <ListGroup variant="flush">
-                  {Object.entries(summaries).map(([label, summary], idx) => (
-                    <ListGroup.Item key={idx}>
-                      <strong>{label}:</strong> {summary}
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              </Card>
-            )}
+            {/* Mobile Collapsible Table */}
+            <Accordion className="mt-4">
+              {results.map((row, idx) => (
+                <Accordion.Item eventKey={idx.toString()} key={idx}>
+                  <Accordion.Header>Customer {idx + 1} - {row.Label}</Accordion.Header>
+                  <Accordion.Body>
+                    <p><strong>Age:</strong> {row.Age}</p>
+                    <p><strong>Annual Income:</strong> ₹{row.Annual_Income.toLocaleString()}</p>
+                    <p><strong>Spending Score:</strong> {row.Spending_Score}</p>
+                    <p><strong>Cluster:</strong> {row.Cluster}</p>
+                    <p><strong>Label:</strong> {row.Label}</p>
+                  </Accordion.Body>
+                </Accordion.Item>
+              ))}
+            </Accordion>
+
+            <Button variant="outline-primary" className="mt-4" onClick={handleDownloadFullReport}>
+              📄 Download Full PDF Report
+            </Button>
           </>
         )}
       </Card>
